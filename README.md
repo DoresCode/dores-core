@@ -29,6 +29,8 @@ uv run pytest
 uv run python examples/streaming_response.py
 uv run python examples/tool_call_roundtrip.py
 uv run python examples/routing_decision.py
+uv run python examples/simple_text_chat.py
+uv run python examples/tool_call_loop.py
 ```
 
 ## 非目标
