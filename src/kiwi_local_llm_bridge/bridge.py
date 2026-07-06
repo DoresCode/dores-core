@@ -22,11 +22,15 @@ from kiwi_local_llm_bridge.types import BridgeErrorPayload, BridgeTimeouts, JSON
 
 @dataclass(frozen=True)
 class LocalLLMChunk:
+    """A streamed text delta produced by the client-local model."""
+
     text: str
 
 
 @dataclass(frozen=True)
 class LocalLLMFinal:
+    """Terminal event for one local inference request."""
+
     finish_reason: str | None = None
 
 
@@ -35,6 +39,14 @@ LocalLLMEvent = LocalLLMChunk | LocalLLMFinal
 
 @dataclass
 class LocalLLMBridge:
+    """Server-side coordinator for one local LLM transport.
+
+    The bridge owns the request/response protocol loop from the server point of
+    view. It sends an `llm_infer_request`, yields text chunks back to the caller,
+    executes server-side tools when the local model asks for them, and stops
+    when the local model sends a final message.
+    """
+
     transport: BridgeTransport
     tool_runtime: ToolRuntime | None = None
     timeouts: BridgeTimeouts = BridgeTimeouts()
@@ -48,6 +60,21 @@ class LocalLLMBridge:
         tool_choice: JSONDict | str | None = None,
         context: JSONDict | None = None,
     ) -> AsyncIterator[LocalLLMEvent]:
+        """Stream one assistant response from a client-local model.
+
+        Args:
+            session_id: Product session id used by routing and auditing layers.
+            llm_model_id: Model id selected by routing, registry, or caller.
+            messages: OpenAI-compatible chat messages passed to the local model.
+            tools: Optional OpenAI-compatible tool schemas exposed to the model.
+            tool_choice: Optional tool choice policy forwarded unchanged.
+            context: Server-side metadata passed only to `ToolRuntime`.
+
+        Yields:
+            `LocalLLMChunk` for streamed text and `LocalLLMFinal` when the local
+            model finishes the request.
+        """
+
         request_id = uuid.uuid4().hex
         request = InferRequestMessage(
             request_id=request_id,
@@ -70,6 +97,8 @@ class LocalLLMBridge:
             message = parse_message(payload)
             message_request_id = self._message_request_id(message)
             if message_request_id != request_id:
+                # Multiple requests may share one transport. Ignore messages for
+                # other request ids instead of leaking them to this caller.
                 continue
 
             if isinstance(message, InferChunkMessage):
@@ -84,6 +113,8 @@ class LocalLLMBridge:
                 raise LocalLLMTimeoutError(message.error.message)
 
             if isinstance(message, ToolCallMessage):
+                # Tool execution stays on the server side so product policy,
+                # audit, and credentials do not have to move into the client.
                 tool_result = await self._execute_tool_call(message, context or {})
                 result_message = ToolResultMessage(
                     request_id=message.request_id,
@@ -106,6 +137,8 @@ class LocalLLMBridge:
         message: ToolCallMessage,
         context: JSONDict,
     ) -> ToolResult:
+        """Run one tool call and normalize failures into protocol payloads."""
+
         if self.tool_runtime is None:
             return ToolResult(
                 ok=False,
@@ -151,8 +184,22 @@ class LocalLLMBridge:
 
     def _message_request_id(
         self,
-        message: InferChunkMessage | InferFinalMessage | InferErrorMessage | ToolCallMessage | object,
+        message: (
+            InferChunkMessage
+            | InferFinalMessage
+            | InferErrorMessage
+            | ToolCallMessage
+            | object
+        ),
     ) -> str | None:
-        if isinstance(message, (InferChunkMessage, InferFinalMessage, InferErrorMessage, ToolCallMessage)):
+        if isinstance(
+            message,
+            (
+                InferChunkMessage,
+                InferFinalMessage,
+                InferErrorMessage,
+                ToolCallMessage,
+            ),
+        ):
             return message.request_id
         return None

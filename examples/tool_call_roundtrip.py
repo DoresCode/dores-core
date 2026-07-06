@@ -11,9 +11,13 @@ from kiwi_local_llm_bridge.types import JSONDict
 
 @dataclass
 class DemoToolRuntime:
+    """Tiny server-side tool runtime used by this example."""
+
     calls: list[JSONDict] = field(default_factory=list)
 
     def list_tools(self) -> list[JSONDict]:
+        """Return tool schemas that will be forwarded to the local model."""
+
         return [
             {
                 "type": "function",
@@ -36,6 +40,8 @@ class DemoToolRuntime:
         arguments: JSONDict,
         context: JSONDict,
     ) -> ToolResult:
+        """Handle one tool call from the local model."""
+
         self.calls.append(
             {
                 "tool_name": tool_name,
@@ -55,10 +61,16 @@ class DemoToolRuntime:
 async def run() -> None:
     transport = InMemoryBridgeTransport()
     tool_runtime = DemoToolRuntime()
+
+    # The bridge owns server-side orchestration. It sees tool calls from the
+    # local model and delegates them to DemoToolRuntime.
     bridge = LocalLLMBridge(transport=transport, tool_runtime=tool_runtime)
 
     async def local_model_client() -> None:
+        # Client side step 1: receive the server's inference request.
         request = await transport.read_outbound()
+
+        # Client side step 2: the local model asks the server to execute a tool.
         await transport.inject_inbound(
             {
                 "type": "llm_tool_call",
@@ -68,8 +80,14 @@ async def run() -> None:
                 "arguments": {"timezone": "Asia/Shanghai"},
             }
         )
+
+        # Server side result appears on outbound because LocalLLMBridge executed
+        # the tool runtime and sent an llm_tool_result message back to client.
         tool_result = await transport.read_outbound()
         print(f"tool_result={tool_result}")
+
+        # Client side step 3: after seeing the tool result, the local model can
+        # produce more chunks; this minimal example only sends the final event.
         await transport.inject_inbound(
             {
                 "type": "llm_infer_final",
@@ -87,6 +105,7 @@ async def run() -> None:
         context={"user_id": "demo-user"},
     ):
         if isinstance(event, LocalLLMFinal):
+            # The async iterator ends immediately after this final event.
             print(f"finish_reason={event.finish_reason}")
 
     await client_task

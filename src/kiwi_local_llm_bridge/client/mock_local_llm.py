@@ -15,6 +15,8 @@ class MockLocalLLM:
     finish_reason: str = "stop"
 
     async def respond_once(self) -> JSONDict:
+        """Read one inference request and answer with configured text chunks."""
+
         request = await self.transport.read_outbound()
         request_id = str(request["request_id"])
         for chunk in self.chunks:
@@ -40,6 +42,8 @@ class MockLocalLLM:
         arguments: JSONDict | None = None,
         tool_call_id: str = "call-1",
     ) -> JSONDict:
+        """Read one inference request, ask for one tool, and return its result."""
+
         request = await self.transport.read_outbound()
         request_id = str(request["request_id"])
         await self.transport.inject_inbound(
@@ -52,4 +56,3 @@ class MockLocalLLM:
             }
         )
         return await self.transport.read_outbound()
-

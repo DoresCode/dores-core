@@ -13,6 +13,8 @@ class MockToolRuntime:
     calls: list[JSONDict] = field(default_factory=list)
 
     def list_tools(self) -> list[JSONDict]:
+        """Expose tool schemas that are sent to the local model."""
+
         return [
             {
                 "type": "function",
@@ -45,6 +47,8 @@ class MockToolRuntime:
         arguments: JSONDict,
         context: JSONDict,
     ) -> ToolResult:
+        """Execute a demo tool and keep the call for assertions/debugging."""
+
         self.calls.append(
             {
                 "tool_name": tool_name,
@@ -78,4 +82,3 @@ class MockToolRuntime:
                 message=f"tool not found: {tool_name}",
             ),
         )
-

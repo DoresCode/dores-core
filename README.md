@@ -22,6 +22,14 @@ uv sync --extra dev
 uv run pytest
 ```
 
+建议按下面顺序阅读示例：
+
+1. `examples/streaming_response.py`：最小协议流，手写客户端回包。
+2. `examples/simple_text_chat.py`：用 `MockLocalLLM` 简化客户端侧代码。
+3. `examples/tool_call_roundtrip.py`：本地模型请求服务端工具执行。
+4. `examples/tool_call_loop.py`：mock 本地模型和 mock 工具运行时组合。
+5. `examples/routing_decision.py`：根据会话、默认模型和 fallback 选路。
+
 运行示例：
 
 ```bash
@@ -49,6 +57,8 @@ uv run python examples/tool_call_loop.py
 - `BridgeTransport`：传输层协议，要求实现 `send()` 和 `receive()`。真实接入时
   可以用 WebSocket、IPC 或其他传输实现该协议。
 - `InMemoryBridgeTransport`：内存队列传输实现，适合示例和单元测试。
+  在示例中，`outbound` 表示服务端发给客户端的消息，`inbound` 表示客户端回给
+  服务端的消息。
 - `ToolRuntime`：工具执行接口。本地模型发起 `llm_tool_call` 后，bridge 会调用
   `ToolRuntime.execute_tool()`，再把结果封装成 `llm_tool_result` 发回本地模型。
 - `LLMModelRegistry`：模型注册表，负责保存模型 ID、配置 key、执行位置和可见性。
@@ -67,11 +77,16 @@ from kiwi_local_llm_bridge.transports.in_memory import InMemoryBridgeTransport
 
 
 async def run() -> None:
+    # 示例用内存传输代替 WebSocket/IPC。bridge 是服务端视角，
+    # local_model_client() 是客户端本地模型视角。
     transport = InMemoryBridgeTransport()
     bridge = LocalLLMBridge(transport=transport)
 
     async def local_model_client() -> None:
+        # 客户端先读取服务端发出的 llm_infer_request。
         request = await transport.read_outbound()
+
+        # 然后按协议把流式文本片段写回 inbound。
         await transport.inject_inbound(
             {
                 "type": "llm_infer_chunk",
@@ -79,6 +94,7 @@ async def run() -> None:
                 "text": "你好",
             }
         )
+        # final 表示这个 request_id 已结束，后面不会再有 chunk。
         await transport.inject_inbound(
             {
                 "type": "llm_infer_final",
@@ -87,6 +103,7 @@ async def run() -> None:
             }
         )
 
+    # 客户端模拟器必须并发运行，否则 bridge 发出请求后会一直等待回包。
     client_task = asyncio.create_task(local_model_client())
     async for event in bridge.stream_response(
         session_id="session-1",
@@ -94,8 +111,10 @@ async def run() -> None:
         messages=[{"role": "user", "content": "打个招呼"}],
     ):
         if isinstance(event, LocalLLMChunk):
+            # chunk 是增量文本，可以直接转发给 HTTP/SSE/WebSocket 调用方。
             print(event.text, end="")
         if isinstance(event, LocalLLMFinal):
+            # final 是结束事件，finish_reason 一般是 stop、length 等。
             print(f"\nfinish_reason={event.finish_reason}")
 
     await client_task
@@ -118,7 +137,11 @@ from kiwi_local_llm_bridge.types import JSONDict
 
 @dataclass
 class DemoToolRuntime:
+    """服务端工具运行时：真正执行工具的地方。"""
+
     def list_tools(self) -> list[JSONDict]:
+        # 这些 schema 会被 LocalLLMBridge 放进 llm_infer_request，
+        # 让本地模型知道它可以请求哪些工具。
         return [
             {
                 "type": "function",
@@ -136,6 +159,8 @@ class DemoToolRuntime:
         arguments: JSONDict,
         context: JSONDict,
     ) -> ToolResult:
+        # 本地模型只发起 llm_tool_call；工具仍由服务端执行。
+        # context 可携带 user_id、租户、审计信息等服务端上下文。
         return ToolResult(
             ok=True,
             tool_name=tool_name,
@@ -167,9 +192,11 @@ from kiwi_local_llm_bridge.routing import LLMRouteManager
 config = {
     "llm_routing": {
         "enabled": True,
+        # 允许客户端为当前 session 选择本地或云端模型。
         "allow_client_update": True,
         "default_execution_target": "server_cloud",
         "fallback": {
+            # client_local 运行失败时，服务端可以切回这个云端模型。
             "fallback_model_id": "cloud_default",
             "fallback_execution_target": "server_cloud",
         },
@@ -177,6 +204,7 @@ config = {
     "llm_model_registry": {
         "models": {
             "cloud_default": {
+                # 服务端调用云模型时使用 llm_config_key 找 provider 配置。
                 "llm_config_key": "CloudProvider",
                 "source": "cloud",
                 "execution_target": "server_cloud",
@@ -185,6 +213,7 @@ config = {
                 "display_name": "云端默认模型",
             },
             "local_demo": {
+                # 本地模型由客户端执行；服务端只保存它的可见性和路由元数据。
                 "llm_config_key": "LocalRoute",
                 "source": "local",
                 "execution_target": "client_local",
@@ -198,12 +227,16 @@ config = {
 }
 
 manager = LLMRouteManager.from_config(config)
+
+# 客户端把当前 session 切到本地模型。
 manager.update_client_route(
     session_id="session-1",
     keychain_id="device-1",
     llm_model_id="local_demo",
     execution_target="client_local",
 )
+
+# resolve_route() 会按 request override -> session route -> default 的优先级决策。
 decision = manager.resolve_route(session_id="session-1", keychain_id="device-1")
 print(decision.to_dict())
 ```
@@ -226,33 +259,36 @@ print(decision.to_dict())
 ## 目录结构
 
 ```text
-kiwi_local_llm_bridge/
+.
   README.md
-  bridge.py
-  errors.py
-  protocol.py
-  registry.py
-  route_store.py
-  routing.py
-  tool_runtime.py
-  types.py
   examples/
     routing_decision.py
+    simple_text_chat.py
     streaming_response.py
+    tool_call_loop.py
     tool_call_roundtrip.py
-  test/
+  src/kiwi_local_llm_bridge/
+    bridge.py
+    errors.py
+    protocol.py
+    registry.py
+    route_store.py
+    routing.py
+    tool_runtime.py
+    types.py
+    transports/
+      base.py
+      in_memory.py
+  tests/
     test_kiwi_local_llm_bridge_bridge.py
     test_kiwi_local_llm_bridge_protocol.py
     test_kiwi_local_llm_bridge_routing.py
-  transports/
-    base.py
-    in_memory.py
 ```
 
 ## 测试
 
-当前 package 专属测试在 `kiwi_local_llm_bridge/test/`：
+当前 package 专属测试在 `tests/`：
 
 ```bash
-uv run pytest kiwi_local_llm_bridge/test
+uv run pytest tests
 ```

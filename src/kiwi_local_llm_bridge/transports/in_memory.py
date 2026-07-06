@@ -8,6 +8,13 @@ from kiwi_local_llm_bridge.types import JSONDict
 
 @dataclass
 class InMemoryBridgeTransport:
+    """Queue-backed transport used to run the protocol without networking.
+
+    `send()` writes server-to-client messages to `outbound`; `receive()` reads
+    client-to-server messages from `inbound`. Tests and examples use
+    `read_outbound()` and `inject_inbound()` to simulate the client side.
+    """
+
     inbound: asyncio.Queue[JSONDict] = field(default_factory=asyncio.Queue)
     outbound: asyncio.Queue[JSONDict] = field(default_factory=asyncio.Queue)
 

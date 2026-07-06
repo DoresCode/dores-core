@@ -9,6 +9,8 @@ from kiwi_local_llm_bridge.types import ExecutionTarget, JSONDict
 
 @dataclass
 class LLMRouteDecision:
+    """Resolved model choice for one inference request."""
+
     llm_model_id: str
     llm_config_key: str
     execution_target: ExecutionTarget
@@ -17,6 +19,8 @@ class LLMRouteDecision:
     reason: str = ""
 
     def to_dict(self) -> JSONDict:
+        """Return a protocol/config friendly representation."""
+
         return {
             "llm_model_id": self.llm_model_id,
             "llm_config_key": self.llm_config_key,
@@ -29,6 +33,8 @@ class LLMRouteDecision:
 
 @dataclass
 class LLMRouteManager:
+    """Resolve whether an inference request should run in cloud or client."""
+
     registry: LLMModelRegistry
     store: RouteStore
     enabled: bool = True
@@ -39,6 +45,8 @@ class LLMRouteManager:
 
     @classmethod
     def from_config(cls, config: JSONDict) -> "LLMRouteManager":
+        """Build routing state from the application config dictionary."""
+
         routing = config.get("llm_routing", {})
         routing_config = routing if isinstance(routing, dict) else {}
         fallback = routing_config.get("fallback", {})
@@ -71,6 +79,14 @@ class LLMRouteManager:
         llm_model_id: str | None,
         execution_target: str | None = None,
     ) -> tuple[bool, LLMRouteDecision | None, str | None]:
+        """Persist a route selected by the client for the current session.
+
+        Returns:
+            Tuple of `(ok, decision, error_code)`. `decision` is present only
+            when the update is accepted; `error_code` is present only when it is
+            rejected.
+        """
+
         if not self.allow_client_update:
             return False, None, "client_update_disabled"
         if not llm_model_id:
@@ -83,6 +99,9 @@ class LLMRouteManager:
         if target is None:
             target = self.default_execution_target
 
+        # Local routes may reference a client-owned model that the server has
+        # not registered yet. Cloud routes must point to an enabled registry
+        # entry because the server needs provider config to execute them.
         if target == "client_local":
             if model is not None and not bool(model.get("enabled", True)):
                 return False, None, "model_not_allowed"
@@ -111,6 +130,15 @@ class LLMRouteManager:
         request_llm_model_id: str | None = None,
         request_execution_target: str | None = None,
     ) -> LLMRouteDecision:
+        """Resolve the effective route for an inference request.
+
+        Priority order:
+        1. Explicit request override.
+        2. Previously accepted session route.
+        3. Device/global default from the registry.
+        4. Empty cloud decision marked as `no_route_available`.
+        """
+
         if request_llm_model_id:
             request_model = self.registry.get_model(request_llm_model_id)
             target = normalize_execution_target(request_execution_target)
@@ -156,6 +184,8 @@ class LLMRouteManager:
         )
 
     def list_visible_models(self) -> list[JSONDict]:
+        """Return enabled models that a client is allowed to display."""
+
         return self.registry.list_visible_models()
 
     def get_fallback_decision(
@@ -164,6 +194,8 @@ class LLMRouteManager:
         keychain_id: str | None = None,
         reason: str = "",
     ) -> LLMRouteDecision | None:
+        """Return a cloud fallback when the current route is client-local."""
+
         if current_decision is not None and current_decision.execution_target == "server_cloud":
             return None
         fallback_model_id = self.fallback_model_id or self.registry.get_default_model_id(keychain_id)
@@ -183,6 +215,8 @@ class LLMRouteManager:
         execution_target: ExecutionTarget,
         reason: str,
     ) -> LLMRouteDecision:
+        """Create a route decision and fill registry-derived metadata."""
+
         model = self.registry.get_model(llm_model_id) or {}
         llm_config_key = model.get("llm_config_key", llm_model_id)
         source = model.get("source", "local" if execution_target == "client_local" else "cloud")

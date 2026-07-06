@@ -11,15 +11,24 @@ from kiwi_local_llm_bridge.transports.in_memory import InMemoryBridgeTransport
 async def run() -> None:
     transport = InMemoryBridgeTransport()
     tool_runtime = MockToolRuntime()
+
+    # Server side: bridge streams model events and executes requested tools.
     bridge = LocalLLMBridge(transport=transport, tool_runtime=tool_runtime)
+
+    # Client side: mock model can request a tool before it sends final output.
     local_llm = MockLocalLLM(transport=transport)
 
     async def local_model_client() -> None:
+        # The mock reads the inference request, sends llm_tool_call, then waits
+        # for the bridge to send llm_tool_result back.
         tool_result = await local_llm.request_tool_once(
             "calculator",
             {"a": 2, "b": 3},
         )
         print(f"tool_result={tool_result}")
+
+        # After consuming the tool result, a real local model would continue
+        # generation. This example sends only the terminal protocol message.
         request_id = str(tool_result["request_id"])
         await transport.inject_inbound(
             {
@@ -38,6 +47,7 @@ async def run() -> None:
         context={"user_id": "demo-user"},
     ):
         if isinstance(event, LocalLLMFinal):
+            # The final event tells callers that no more chunks will arrive.
             print(f"finish_reason={event.finish_reason}")
 
     await client_task
@@ -45,4 +55,3 @@ async def run() -> None:
 
 if __name__ == "__main__":
     asyncio.run(run())
-

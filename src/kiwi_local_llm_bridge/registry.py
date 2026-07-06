@@ -9,11 +9,15 @@ from kiwi_local_llm_bridge.types import ExecutionTarget, JSONDict
 
 @dataclass
 class LLMModelRegistry:
+    """Registry of cloud and client-local models known by the server."""
+
     models: dict[str, JSONDict] = field(default_factory=dict)
     defaults: JSONDict = field(default_factory=dict)
 
     @classmethod
     def from_config(cls, config: JSONDict) -> "LLMModelRegistry":
+        """Build a registry from explicit `llm_model_registry` config."""
+
         explicit_models = config.get("models", {})
         defaults = config.get("defaults", {})
         models: dict[str, JSONDict] = {}
@@ -23,6 +27,8 @@ class LLMModelRegistry:
                     continue
                 config_key = model_info.get("llm_config_key")
                 if not config_key:
+                    # A model without a provider/config key cannot be executed
+                    # by server-side code, so it is ignored at load time.
                     continue
                 models[str(model_id)] = {
                     "llm_config_key": str(config_key),
@@ -39,6 +45,8 @@ class LLMModelRegistry:
 
     @classmethod
     def from_app_config(cls, config: JSONDict) -> "LLMModelRegistry":
+        """Build a registry from new config, or infer one from legacy `LLM`."""
+
         registry_config = config.get("llm_model_registry", {})
         registry_data = registry_config if isinstance(registry_config, dict) else {}
         explicit_models = registry_data.get("models", {})
@@ -68,12 +76,16 @@ class LLMModelRegistry:
         return cls(models=models, defaults=default_data)
 
     def get_model(self, llm_model_id: str) -> JSONDict | None:
+        """Return a copy of a model entry so callers cannot mutate registry state."""
+
         model = self.models.get(llm_model_id)
         if model is None:
             return None
         return deepcopy(model)
 
     def is_model_enabled(self, llm_model_id: str | None) -> bool:
+        """Return whether a model id exists and is enabled."""
+
         if not llm_model_id:
             return False
         model = self.models.get(llm_model_id)
@@ -82,6 +94,8 @@ class LLMModelRegistry:
         return bool(model.get("enabled", True))
 
     def get_default_model_id(self, keychain_id: str | None = None) -> str | None:
+        """Resolve device default, global default, then first enabled model."""
+
         device_defaults = self.defaults.get("device", {})
         if keychain_id and isinstance(device_defaults, dict):
             candidate = device_defaults.get(keychain_id)
@@ -96,6 +110,8 @@ class LLMModelRegistry:
         return None
 
     def list_visible_models(self) -> list[JSONDict]:
+        """List enabled models that can be advertised to a client."""
+
         items: list[JSONDict] = []
         for model_id, info in self.models.items():
             if not bool(info.get("enabled", True)):
@@ -115,6 +131,8 @@ class LLMModelRegistry:
 
 
 def normalize_execution_target(value: Any) -> ExecutionTarget | None:
+    """Return a supported execution target, or None for invalid input."""
+
     if value == "server_cloud" or value == "client_local":
         return value
     return None
