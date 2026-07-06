@@ -1,16 +1,13 @@
-# Protocol
+# 协议
 
-`kiwi-local-llm-bridge` defines a small JSON message protocol for delegating LLM
-inference from a cloud server to a client-local model while keeping tool
-execution on the server.
+`kiwi-local-llm-bridge` 定义了一组精简的 JSON 消息协议，用于把云端服务的
+LLM 推理请求委托给客户端本地模型，同时让工具执行、审计和产品编排继续留在服务端。
 
-The protocol is transport-agnostic. Messages can be sent over WebSocket, IPC, an
-in-memory queue, or another transport that implements the bridge transport
-interface.
+协议与传输层解耦。消息可以通过 WebSocket、IPC、内存队列，或任何实现桥接传输接口的传输方式发送。
 
-## Message Types
+## 消息类型
 
-The first version supports these message types:
+第一版支持以下消息类型：
 
 ```text
 llm_model_update
@@ -25,26 +22,24 @@ llm_tool_call
 llm_tool_result
 ```
 
-The protocol uses streaming inference messages. `llm_infer_response` is not a
-primary protocol message; use `llm_infer_chunk`, `llm_infer_final`, and
-`llm_infer_error`.
+协议使用流式推理消息。推理过程由 `llm_infer_chunk`、`llm_infer_final` 和
+`llm_infer_error` 表达。
 
-## Execution Targets
+## 执行位置
 
-`execution_target` must be one of:
+`execution_target` 支持以下取值：
 
 ```text
 server_cloud
 client_local
 ```
 
-LLM routing uses `llm_model_id`. The field name `model` is intentionally not a
-route alias because product clients may already use it for character, Live2D, or
-TTS state.
+LLM 路由使用 `llm_model_id`。`model` 字段在产品客户端中可继续表达角色、
+Live2D 或 TTS 状态，`llm_model_id` 专门表达 LLM 路由目标。
 
-## Model Update
+## 模型更新
 
-Client request:
+客户端请求：
 
 ```json
 {
@@ -58,7 +53,7 @@ Client request:
 }
 ```
 
-Successful server acknowledgement:
+服务端成功确认：
 
 ```json
 {
@@ -70,7 +65,7 @@ Successful server acknowledgement:
 }
 ```
 
-Rejected server acknowledgement:
+服务端拒绝确认：
 
 ```json
 {
@@ -79,14 +74,14 @@ Rejected server acknowledgement:
   "status": "rejected",
   "error": {
     "code": "model_not_allowed",
-    "message": "Requested llm model is not available"
+    "message": "请求的 LLM 模型当前状态不可执行"
   }
 }
 ```
 
-## Model List
+## 模型列表
 
-Client request:
+客户端请求：
 
 ```json
 {
@@ -96,7 +91,7 @@ Client request:
 }
 ```
 
-Server response:
+服务端响应：
 
 ```json
 {
@@ -105,13 +100,13 @@ Server response:
   "models": [
     {
       "llm_model_id": "cloud_default",
-      "display_name": "Cloud Default",
+      "display_name": "云端默认模型",
       "execution_target": "server_cloud",
       "source": "cloud"
     },
     {
       "llm_model_id": "local_qwen3_8b",
-      "display_name": "Local Qwen 3 8B",
+      "display_name": "本地 Qwen 3 8B",
       "execution_target": "client_local",
       "source": "local"
     }
@@ -119,9 +114,9 @@ Server response:
 }
 ```
 
-## Inference Request
+## 推理请求
 
-Server request to the client-local model:
+服务端发送给客户端本地模型的请求：
 
 ```json
 {
@@ -130,15 +125,15 @@ Server request to the client-local model:
   "session_id": "session-123",
   "llm_model_id": "local_qwen3_8b",
   "messages": [
-    {"role": "system", "content": "You are a helpful assistant."},
-    {"role": "user", "content": "What time is it?"}
+    {"role": "system", "content": "你是一个有帮助的助手。"},
+    {"role": "user", "content": "现在几点？"}
   ],
   "tools": [
     {
       "type": "function",
       "function": {
         "name": "get_time",
-        "description": "Get current time",
+        "description": "获取当前时间",
         "parameters": {
           "type": "object",
           "properties": {}
@@ -150,17 +145,17 @@ Server request to the client-local model:
 }
 ```
 
-Client streaming response:
+客户端流式响应：
 
 ```json
 {
   "type": "llm_infer_chunk",
   "request_id": "req-001",
-  "text": "Let me check."
+  "text": "我来查询。"
 }
 ```
 
-Client final response:
+客户端最终响应：
 
 ```json
 {
@@ -170,7 +165,7 @@ Client final response:
 }
 ```
 
-Client error response:
+客户端错误响应：
 
 ```json
 {
@@ -178,14 +173,14 @@ Client error response:
   "request_id": "req-001",
   "error": {
     "code": "local_model_unavailable",
-    "message": "Local model is not loaded"
+    "message": "本地模型当前状态不可执行"
   }
 }
 ```
 
-## Tool Call Loop
+## 工具调用循环
 
-Client-local model requests a server-side tool call:
+客户端本地模型请求服务端执行工具：
 
 ```json
 {
@@ -197,7 +192,7 @@ Client-local model requests a server-side tool call:
 }
 ```
 
-Server returns the tool result:
+服务端返回工具结果：
 
 ```json
 {
@@ -218,7 +213,7 @@ Server returns the tool result:
 }
 ```
 
-Tool failure is also returned as `llm_tool_result`:
+工具执行失败时，服务端同样使用 `llm_tool_result` 返回结果：
 
 ```json
 {
@@ -232,30 +227,29 @@ Tool failure is also returned as `llm_tool_result`:
   "result": null,
   "error": {
     "code": "tool_exec_failed",
-    "message": "tool failed"
+    "message": "工具执行失败"
   }
 }
 ```
 
-## Error Codes
+## 错误码
 
-Recommended error codes:
+推荐错误码：
 
-| Code | Meaning |
+| 错误码 | 含义 |
 | --- | --- |
-| `websocket_not_ready` | The transport is not connected or ready. |
-| `send_timeout` | Sending a request timed out. |
-| `local_infer_timeout` | The local model did not produce chunk/final/error in time. |
-| `local_model_unavailable` | The client reported that the local model is unavailable. |
-| `unknown_request_id` | A message referenced a request id that is not pending. |
-| `invalid_message` | A protocol message is malformed. |
-| `invalid_tool_call` | A tool call is missing required fields or has invalid arguments. |
-| `tool_runtime_missing` | A tool call requires a server tool runtime, but none is configured. |
-| `tools_not_ready` | The server-side tool system is not ready. |
-| `tool_not_found` | The requested tool does not exist. |
-| `tool_exec_failed` | Tool execution raised an error. |
-| `tool_exec_timeout` | Tool execution timed out. |
-| `route_update_failed` | The model route update failed. |
-| `model_not_allowed` | The requested model is disabled, hidden, or unavailable. |
-| `invalid_execution_target` | `execution_target` is not `server_cloud` or `client_local`. |
-
+| `websocket_not_ready` | 传输连接正在等待就绪。 |
+| `send_timeout` | 请求发送超时。 |
+| `local_infer_timeout` | 本地模型推理超时。 |
+| `local_model_unavailable` | 客户端报告本地模型当前状态不可执行。 |
+| `unknown_request_id` | 消息引用了未知的请求 ID。 |
+| `invalid_message` | 协议消息格式异常。 |
+| `invalid_tool_call` | 工具调用缺少必要字段或参数格式异常。 |
+| `tool_runtime_missing` | 工具调用需要服务端工具运行时。 |
+| `tools_not_ready` | 服务端工具系统正在等待就绪。 |
+| `tool_not_found` | 请求的工具超出当前工具集合。 |
+| `tool_exec_failed` | 工具执行发生错误。 |
+| `tool_exec_timeout` | 工具执行超时。 |
+| `route_update_failed` | 模型路由更新失败。 |
+| `model_not_allowed` | 请求的模型当前状态不可执行。 |
+| `invalid_execution_target` | `execution_target` 取值异常。 |

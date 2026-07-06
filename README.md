@@ -1,17 +1,16 @@
 # kiwi-local-llm-bridge
 
-`kiwi-local-llm-bridge` lets a cloud server delegate LLM inference to a
-client-local model while keeping tool execution, auditing, and product
-orchestration on the server.
+`kiwi-local-llm-bridge` 让云端服务把 LLM 推理委托给客户端本地模型，并把工具执行、
+审计和产品编排保留在服务端。
 
-它定义了一组轻量协议和 async-first 运行时抽象，用于把 LLM 推理请求发送给
-客户端本地模型，并把本地模型返回的流式文本、工具调用和最终状态传回服务端代码。
+它定义了一组轻量协议和异步优先运行时抽象，用于把 LLM 推理请求发送给客户端本地模型，
+并把本地模型返回的流式文本、工具调用和最终状态传回服务端代码。
 
 ```text
-Cloud Server -> llm_infer_request -> Client Local LLM
-Client Local LLM -> llm_infer_chunk / llm_tool_call / llm_infer_final
-Cloud Server Tool Runtime -> llm_tool_result -> Client Local LLM
-Cloud Server -> stream final assistant response
+云端服务 -> llm_infer_request -> 客户端本地 LLM
+客户端本地 LLM -> llm_infer_chunk / llm_tool_call / llm_infer_final
+云端工具运行时 -> llm_tool_result -> 客户端本地 LLM
+云端服务 -> 流式输出最终助手回复
 ```
 
 ## 快速开始
@@ -23,7 +22,7 @@ uv sync --extra dev
 uv run pytest
 ```
 
-运行 examples：
+运行示例：
 
 ```bash
 uv run python examples/streaming_response.py
@@ -33,28 +32,28 @@ uv run python examples/simple_text_chat.py
 uv run python examples/tool_call_loop.py
 ```
 
-## 非目标
+## 当前范围
 
-第一阶段聚焦本地 LLM 桥接协议和最小运行时，不包含：
+第一阶段交付本地 LLM 桥接协议和最小运行时，覆盖以下能力：
 
-- 账号、VIP、IAP、管理后台或生产配置。
-- ASR、TTS、VAD 或音频流处理。
-- 邮件、日历、提醒、IoT、MCP endpoint 等真实产品工具。
-- 客户端 UI、本地模型安装策略或模型运行器。
-- 私有工程的 WebSocket connection runtime。
+- 云端服务向客户端本地模型发送流式推理请求。
+- 客户端本地模型向云端服务回传流式文本、最终状态和错误状态。
+- 客户端本地模型发起工具调用，云端工具运行时执行后回传工具结果。
+- 服务端维护模型注册表、会话路由、默认模型和客户端路由更新。
+- 内存队列传输支持示例运行和单元测试。
 
 ## 核心概念
 
 - `LocalLLMBridge`：服务端侧异步桥接器。它发送 `llm_infer_request`，接收
-  chunk/final/error/tool_call 消息，并产出 Python 事件。
-- `BridgeTransport`：传输层协议，只要求实现 `send()` 和 `receive()`。真实接入时
+  流式片段、最终状态、错误状态和工具调用消息，并产出 Python 事件。
+- `BridgeTransport`：传输层协议，要求实现 `send()` 和 `receive()`。真实接入时
   可以用 WebSocket、IPC 或其他传输实现该协议。
-- `InMemoryBridgeTransport`：内存队列 transport，适合示例和单元测试。
+- `InMemoryBridgeTransport`：内存队列传输实现，适合示例和单元测试。
 - `ToolRuntime`：工具执行接口。本地模型发起 `llm_tool_call` 后，bridge 会调用
   `ToolRuntime.execute_tool()`，再把结果封装成 `llm_tool_result` 发回本地模型。
 - `LLMModelRegistry`：模型注册表，负责保存模型 ID、配置 key、执行位置和可见性。
 - `LLMRouteManager`：路由管理器，负责客户端路由更新、请求覆盖、会话路由、
-  默认模型和 fallback 路由决策。
+  默认模型和兜底路由决策。
 
 ## 最小流式推理
 
@@ -77,7 +76,7 @@ async def run() -> None:
             {
                 "type": "llm_infer_chunk",
                 "request_id": request["request_id"],
-                "text": "Hello",
+                "text": "你好",
             }
         )
         await transport.inject_inbound(
@@ -92,7 +91,7 @@ async def run() -> None:
     async for event in bridge.stream_response(
         session_id="session-1",
         llm_model_id="local-demo-model",
-        messages=[{"role": "user", "content": "Say hello"}],
+        messages=[{"role": "user", "content": "打个招呼"}],
     ):
         if isinstance(event, LocalLLMChunk):
             print(event.text, end="")
@@ -125,7 +124,7 @@ class DemoToolRuntime:
                 "type": "function",
                 "function": {
                     "name": "get_time",
-                    "description": "Return a demo time string.",
+                    "description": "返回演示时间字符串。",
                     "parameters": {"type": "object", "properties": {}},
                 },
             }
@@ -146,14 +145,14 @@ class DemoToolRuntime:
         )
 ```
 
-把 runtime 注入 `LocalLLMBridge`：
+把运行时注入 `LocalLLMBridge`：
 
 ```python
 tool_runtime = DemoToolRuntime()
 bridge = LocalLLMBridge(transport=transport, tool_runtime=tool_runtime)
 ```
 
-当 bridge 收到 `llm_tool_call` 消息时，会执行工具并通过 transport 发出
+当桥接器收到 `llm_tool_call` 消息时，会执行工具并通过传输层发出
 `llm_tool_result`。
 
 ## 路由决策
@@ -183,7 +182,7 @@ config = {
                 "execution_target": "server_cloud",
                 "enabled": True,
                 "visible_to_client": True,
-                "display_name": "Cloud Default",
+                "display_name": "云端默认模型",
             },
             "local_demo": {
                 "llm_config_key": "LocalRoute",
@@ -191,7 +190,7 @@ config = {
                 "execution_target": "client_local",
                 "enabled": True,
                 "visible_to_client": True,
-                "display_name": "Local Demo",
+                "display_name": "本地演示模型",
             },
         },
         "defaults": {"global": "cloud_default"},
