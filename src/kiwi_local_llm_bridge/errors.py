@@ -9,6 +9,10 @@ class InvalidMessageError(BridgeError):
     """Raised when a protocol message is malformed."""
 
 
+class InvalidConfigError(BridgeError):
+    """Raised when SDK configuration is malformed."""
+
+
 class LocalLLMTimeoutError(BridgeError):
     """Raised when the client-local model does not respond in time."""
 

@@ -1,16 +1,16 @@
 # kiwi-local-llm-bridge
 
-`kiwi-local-llm-bridge` 让云端服务把 LLM 推理委托给客户端本地模型，并把工具执行、
-审计和产品编排保留在服务端。
+`kiwi-local-llm-bridge` 让服务端应用把 LLM 推理请求桥接到客户端本地模型，
+并把工具执行、审计和产品编排保留在服务端。
 
 它定义了一组轻量协议和异步优先运行时抽象，用于把 LLM 推理请求发送给客户端本地模型，
 并把本地模型返回的流式文本、工具调用和最终状态传回服务端代码。
 
 ```text
-云端服务 -> llm_infer_request -> 客户端本地 LLM
+服务端应用 -> llm_infer_request -> 客户端本地 LLM
 客户端本地 LLM -> llm_infer_chunk / llm_tool_call / llm_infer_final
-云端工具运行时 -> llm_tool_result -> 客户端本地 LLM
-云端服务 -> 流式输出最终助手回复
+服务端工具运行时 -> llm_tool_result -> 客户端本地 LLM
+服务端应用 -> 流式输出最终助手回复
 ```
 
 ## 快速开始
@@ -28,7 +28,7 @@ uv run pytest
 2. `examples/simple_text_chat.py`：用 `MockLocalLLM` 简化客户端侧代码。
 3. `examples/tool_call_roundtrip.py`：本地模型请求服务端工具执行。
 4. `examples/tool_call_loop.py`：mock 本地模型和 mock 工具运行时组合。
-5. `examples/routing_decision.py`：根据会话、默认模型和 fallback 选路。
+5. `examples/routing_decision.py`：根据会话和默认本地模型选路。
 
 运行示例：
 
@@ -44,9 +44,9 @@ uv run python examples/tool_call_loop.py
 
 第一阶段交付本地 LLM 桥接协议和最小运行时，覆盖以下能力：
 
-- 云端服务向客户端本地模型发送流式推理请求。
-- 客户端本地模型向云端服务回传流式文本、最终状态和错误状态。
-- 客户端本地模型发起工具调用，云端工具运行时执行后回传工具结果。
+- 服务端应用向客户端本地模型发送流式推理请求。
+- 客户端本地模型向服务端应用回传流式文本、最终状态和错误状态。
+- 客户端本地模型发起工具调用，服务端工具运行时执行后回传工具结果。
 - 服务端维护模型注册表、会话路由、默认模型和客户端路由更新。
 - 内存队列传输支持示例运行和单元测试。
 
@@ -61,9 +61,10 @@ uv run python examples/tool_call_loop.py
   服务端的消息。
 - `ToolRuntime`：工具执行接口。本地模型发起 `llm_tool_call` 后，bridge 会调用
   `ToolRuntime.execute_tool()`，再把结果封装成 `llm_tool_result` 发回本地模型。
-- `LLMModelRegistry`：模型注册表，负责保存模型 ID、配置 key、执行位置和可见性。
+- `LLMModelRegistry`：本地模型注册表，负责保存模型 ID、展示名、能力、来源、
+  运行要求和可见性。
 - `LLMRouteManager`：路由管理器，负责客户端路由更新、请求覆盖、会话路由、
-  默认模型和兜底路由决策。
+  默认本地模型决策。
 
 ## 最小流式推理
 
@@ -180,66 +181,195 @@ bridge = LocalLLMBridge(transport=transport, tool_runtime=tool_runtime)
 当桥接器收到 `llm_tool_call` 消息时，会执行工具并通过传输层发出
 `llm_tool_result`。
 
-## 路由决策
+## 本地模型配置
 
-完整示例见 `examples/routing_decision.py`。最小配置包含 `llm_routing` 和
-`llm_model_registry`：
+完整示例见 `examples/routing_decision.py`。路由配置只描述客户端本地模型，不描述云端
+provider，也不包含回退路由。配置错误应该在初始化时直接报错，而不是静默降级。
+
+配置结构贴近本地模型清单。每个模型只需要一个身份字段：`id`。SDK 在协议和路由结果中
+统一把它称为 `llm_model_id`。不要再额外定义第二个模型 key 字段。
+
+配置来自 JSON/YAML 时，`LLMRouteManager.from_config()` 会用 Pydantic 校验字段；字段
+缺失、默认模型不存在、重复模型 ID、未知字段都会直接报错。
 
 ```python
 from kiwi_local_llm_bridge.routing import LLMRouteManager
 
 
 config = {
-    "llm_routing": {
-        "enabled": True,
-        # 允许客户端为当前 session 选择本地或云端模型。
-        "allow_client_update": True,
-        "default_execution_target": "server_cloud",
-        "fallback": {
-            # client_local 运行失败时，服务端可以切回这个云端模型。
-            "fallback_model_id": "cloud_default",
-            "fallback_execution_target": "server_cloud",
+    "default_model_id": "Qwen3.5-2B-nvfp4",
+    "allow_client_update": True,
+    "local_llm_models": [
+        {
+            "id": "Qwen3.5-2B-nvfp4",
+            "display_name": "Qwen3.5-2B-nvfp4",
+            "capability": "vision",
+            "sources": [
+                {
+                    "provider": "huggingface",
+                    "repo_id": "mlx-community/Qwen3.5-2B-nvfp4",
+                }
+            ],
+            "recommended_order": 30,
+            "requirements": {"ram": "4G"},
         },
-    },
-    "llm_model_registry": {
-        "models": {
-            "cloud_default": {
-                # 服务端调用云模型时使用 llm_config_key 找 provider 配置。
-                "llm_config_key": "CloudProvider",
-                "source": "cloud",
-                "execution_target": "server_cloud",
-                "enabled": True,
-                "visible_to_client": True,
-                "display_name": "云端默认模型",
-            },
-            "local_demo": {
-                # 本地模型由客户端执行；服务端只保存它的可见性和路由元数据。
-                "llm_config_key": "LocalRoute",
-                "source": "local",
-                "execution_target": "client_local",
-                "enabled": True,
-                "visible_to_client": True,
-                "display_name": "本地演示模型",
-            },
+        {
+            "id": "Qwen3.5-4B-nvfp4",
+            "display_name": "Qwen3.5-4B-nvfp4",
+            "capability": "vision",
+            "sources": [
+                {
+                    "provider": "huggingface",
+                    "repo_id": "mlx-community/Qwen3.5-4B-nvfp4",
+                }
+            ],
+            "recommended_order": 40,
+            "requirements": {"ram": "8G"},
         },
-        "defaults": {"global": "cloud_default"},
-    },
+        {
+            "id": "Gemma-4-12B-it-qat-mxfp8",
+            "display_name": "Gemma-4-12B-it-qat-mxfp8",
+            "capability": "vision",
+            "sources": [
+                {
+                    "provider": "huggingface",
+                    "repo_id": "mlx-community/gemma-4-12B-it-qat-mxfp8",
+                }
+            ],
+            "recommended_order": 50,
+            "requirements": {"ram": "16G"},
+        },
+    ],
 }
+```
 
+同样的 YAML 写法：
+
+```yaml
+default_model_id: Qwen3.5-2B-nvfp4
+allow_client_update: true
+local_llm_models:
+  - id: Qwen3.5-2B-nvfp4
+    display_name: Qwen3.5-2B-nvfp4
+    capability: vision
+    sources:
+      - provider: huggingface
+        repo_id: mlx-community/Qwen3.5-2B-nvfp4
+    recommended_order: 30
+    requirements:
+      ram: 4G
+  - id: Qwen3.5-4B-nvfp4
+    display_name: Qwen3.5-4B-nvfp4
+    capability: vision
+    sources:
+      - provider: huggingface
+        repo_id: mlx-community/Qwen3.5-4B-nvfp4
+    recommended_order: 40
+    requirements:
+      ram: 8G
+  - id: Gemma-4-12B-it-qat-mxfp8
+    display_name: Gemma-4-12B-it-qat-mxfp8
+    capability: vision
+    sources:
+      - provider: huggingface
+        repo_id: mlx-community/gemma-4-12B-it-qat-mxfp8
+    recommended_order: 50
+    requirements:
+      ram: 16G
+```
+
+创建路由管理器并查看模型信息：
+
+```python
 manager = LLMRouteManager.from_config(config)
 
-# 客户端把当前 session 切到本地模型。
-manager.update_client_route(
+print(manager.list_visible_models())
+```
+
+输出会包含完整的客户端可见模型信息：
+
+```python
+[
+    {
+        "llm_model_id": "Qwen3.5-2B-nvfp4",
+        "display_name": "Qwen3.5-2B-nvfp4",
+        "capability": "vision",
+        "sources": [
+            {
+                "provider": "huggingface",
+                "repo_id": "mlx-community/Qwen3.5-2B-nvfp4",
+            },
+        ],
+        "recommended_order": 30,
+        "requirements": {"ram": "4G"},
+        "execution_target": "client_local",
+    },
+    {
+        "llm_model_id": "Qwen3.5-4B-nvfp4",
+        "display_name": "Qwen3.5-4B-nvfp4",
+        "capability": "vision",
+        "sources": [
+            {
+                "provider": "huggingface",
+                "repo_id": "mlx-community/Qwen3.5-4B-nvfp4",
+            },
+        ],
+        "recommended_order": 40,
+        "requirements": {"ram": "8G"},
+        "execution_target": "client_local",
+    },
+]
+```
+
+更新并解析当前 session 的本地模型路由：
+
+```python
+# 客户端把当前 session 切到一个本地模型。
+decision = manager.update_client_route(
     session_id="session-1",
     keychain_id="device-1",
-    llm_model_id="local_demo",
-    execution_target="client_local",
+    llm_model_id="Qwen3.5-4B-nvfp4",
 )
+print(decision.to_dict())
 
 # resolve_route() 会按 request override -> session route -> default 的优先级决策。
 decision = manager.resolve_route(session_id="session-1", keychain_id="device-1")
 print(decision.to_dict())
 ```
+
+### `id` 和 `llm_model_id`
+
+配置文件里的每个模型使用 `id`：
+
+```yaml
+- id: Qwen3.5-2B-nvfp4
+```
+
+协议、路由 API 和返回结果里使用 `llm_model_id`：
+
+```python
+bridge.stream_response(
+    session_id="session-1",
+    llm_model_id="Qwen3.5-2B-nvfp4",
+    messages=[{"role": "user", "content": "Describe this image"}],
+)
+```
+
+二者指向同一个值。`default_model_id` 也必须引用 `local_llm_models[].id`。
+
+如果你的应用需要额外的内部映射，应在应用层维护，不要放进桥接协议里。
+
+### 调试日志
+
+SDK 使用标准库 `logging`。调试本地模型列表和路由决策时，可以这样开启日志：
+
+```python
+import logging
+
+logging.basicConfig(level=logging.DEBUG)
+```
+
+你会看到 registry 初始化、可见模型列表、客户端路由更新、最终路由决策等日志。
 
 ## 协议消息
 

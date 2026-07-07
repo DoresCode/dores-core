@@ -1,4 +1,4 @@
-"""Protocol messages for cloud-to-client local LLM inference."""
+"""Protocol messages for server-to-client local LLM inference."""
 
 from dataclasses import dataclass, field
 from typing import Any, Literal
@@ -66,7 +66,7 @@ class ModelUpdateMessage:
         body_dict = body if isinstance(body, dict) else {}
         llm_model_id = body_dict.get("llm_model_id") or payload.get("llm_model_id")
         execution_target = body_dict.get("execution_target") or payload.get("execution_target")
-        if execution_target not in {"server_cloud", "client_local"}:
+        if execution_target != "client_local":
             raise InvalidMessageError("invalid_execution_target")
         normalized = {
             "llm_model_id": llm_model_id,

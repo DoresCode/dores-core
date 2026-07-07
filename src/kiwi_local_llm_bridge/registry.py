@@ -1,138 +1,188 @@
-"""LLM model registry for local/cloud routing."""
+"""Local LLM model registry."""
 
-from copy import deepcopy
-from dataclasses import dataclass, field
-from typing import Any
+import logging
+from typing import Literal
 
-from kiwi_local_llm_bridge.types import ExecutionTarget, JSONDict
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from kiwi_local_llm_bridge.types import JSONDict
+
+logger = logging.getLogger(__name__)
+
+LocalLLMCapability = Literal["text", "vision"]
 
 
-@dataclass
+class LocalLLMSource(BaseModel):
+    """Download/source metadata for one local model."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    provider: str
+    repo_id: str
+
+
+class LocalLLMRequirements(BaseModel):
+    """Runtime requirements advertised for a local model."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    ram: str | None = None
+
+
+class LocalLLMModelConfig(BaseModel):
+    """Configuration for one client-local model."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(min_length=1)
+    display_name: str = Field(min_length=1)
+    capability: LocalLLMCapability = "text"
+    sources: list[LocalLLMSource] = Field(default_factory=list)
+    recommended_order: int = 100
+    requirements: LocalLLMRequirements = Field(
+        default_factory=LocalLLMRequirements
+    )
+    enabled: bool = True
+    visible_to_client: bool = True
+
+    def to_public_dict(self) -> JSONDict:
+        """Return model metadata safe to send to a client."""
+
+        return {
+            "llm_model_id": self.id,
+            "display_name": self.display_name,
+            "capability": self.capability,
+            "sources": [source.model_dump() for source in self.sources],
+            "recommended_order": self.recommended_order,
+            "requirements": self.requirements.model_dump(exclude_none=True),
+            "execution_target": "client_local",
+        }
+
+
+class LocalLLMBridgeConfig(BaseModel):
+    """Validated SDK configuration for client-local model routing."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    default_model_id: str = Field(min_length=1)
+    local_llm_models: list[LocalLLMModelConfig] = Field(min_length=1)
+    allow_client_update: bool = True
+    device_defaults: dict[str, str] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_model_ids(self) -> "LocalLLMBridgeConfig":
+        """Validate default references and duplicate model ids."""
+
+        model_ids: set[str] = set()
+        duplicates: set[str] = set()
+        enabled_model_ids: set[str] = set()
+        for model in self.local_llm_models:
+            if model.id in model_ids:
+                duplicates.add(model.id)
+            model_ids.add(model.id)
+            if model.enabled:
+                enabled_model_ids.add(model.id)
+        if duplicates:
+            duplicate_names = ", ".join(sorted(duplicates))
+            raise ValueError(f"duplicate local_llm_models id: {duplicate_names}")
+        if self.default_model_id not in model_ids:
+            raise ValueError(
+                "default_model_id must reference local_llm_models[].id"
+            )
+        if self.default_model_id not in enabled_model_ids:
+            raise ValueError("default_model_id must reference an enabled model")
+        for device_id, model_id in self.device_defaults.items():
+            if model_id not in model_ids:
+                raise ValueError(
+                    f"device_defaults.{device_id} references unknown model: "
+                    f"{model_id}"
+                )
+            if model_id not in enabled_model_ids:
+                raise ValueError(
+                    f"device_defaults.{device_id} references disabled model: "
+                    f"{model_id}"
+                )
+        return self
+
+
 class LLMModelRegistry:
-    """Registry of cloud and client-local models known by the server."""
+    """Registry of client-local models known by the server application."""
 
-    models: dict[str, JSONDict] = field(default_factory=dict)
-    defaults: JSONDict = field(default_factory=dict)
-
-    @classmethod
-    def from_config(cls, config: JSONDict) -> "LLMModelRegistry":
-        """Build a registry from explicit `llm_model_registry` config."""
-
-        explicit_models = config.get("models", {})
-        defaults = config.get("defaults", {})
-        models: dict[str, JSONDict] = {}
-        if isinstance(explicit_models, dict):
-            for model_id, model_info in explicit_models.items():
-                if not isinstance(model_info, dict):
-                    continue
-                config_key = model_info.get("llm_config_key")
-                if not config_key:
-                    # A model without a provider/config key cannot be executed
-                    # by server-side code, so it is ignored at load time.
-                    continue
-                models[str(model_id)] = {
-                    "llm_config_key": str(config_key),
-                    "source": str(model_info.get("source", "cloud")),
-                    "execution_target": str(model_info.get("execution_target", "server_cloud")),
-                    "enabled": bool(model_info.get("enabled", True)),
-                    "visible_to_client": bool(model_info.get("visible_to_client", True)),
-                    "display_name": model_info.get("display_name") or str(model_id),
-                }
-        return cls(
-            models=models,
-            defaults=defaults if isinstance(defaults, dict) else {},
+    def __init__(self, config: LocalLLMBridgeConfig):
+        self.config = config
+        self.models = {model.id: model for model in config.local_llm_models}
+        logger.info(
+            "local LLM registry initialized: default_model_id=%s, "
+            "model_count=%d, allow_client_update=%s",
+            config.default_model_id,
+            len(self.models),
+            config.allow_client_update,
+        )
+        logger.debug(
+            "local LLM registry models: %s",
+            [model.to_public_dict() for model in config.local_llm_models],
         )
 
     @classmethod
-    def from_app_config(cls, config: JSONDict) -> "LLMModelRegistry":
-        """Build a registry from new config, or infer one from legacy `LLM`."""
+    def from_config(
+        cls,
+        config: LocalLLMBridgeConfig | JSONDict,
+    ) -> "LLMModelRegistry":
+        """Build a registry from validated config or JSON/YAML friendly data."""
 
-        registry_config = config.get("llm_model_registry", {})
-        registry_data = registry_config if isinstance(registry_config, dict) else {}
-        explicit_models = registry_data.get("models", {})
-        if isinstance(explicit_models, dict) and explicit_models:
-            return cls.from_config(registry_data)
+        bridge_config = (
+            config
+            if isinstance(config, LocalLLMBridgeConfig)
+            else LocalLLMBridgeConfig.model_validate(config)
+        )
+        return cls(bridge_config)
 
-        llm_config = config.get("LLM", {})
-        llm_data = llm_config if isinstance(llm_config, dict) else {}
-        models = {
-            str(config_key): {
-                "llm_config_key": str(config_key),
-                "source": "cloud",
-                "execution_target": "server_cloud",
-                "enabled": True,
-                "visible_to_client": True,
-                "display_name": str(config_key),
-            }
-            for config_key in llm_data.keys()
-        }
-        defaults = registry_data.get("defaults", {})
-        default_data = defaults if isinstance(defaults, dict) else {}
-        selected_llm = config.get("selected_module", {})
-        selected_data = selected_llm if isinstance(selected_llm, dict) else {}
-        selected_model = selected_data.get("LLM")
-        if isinstance(selected_model, str) and "global" not in default_data:
-            default_data = {**default_data, "global": selected_model}
-        return cls(models=models, defaults=default_data)
+    def get_model(self, llm_model_id: str) -> LocalLLMModelConfig | None:
+        """Return a local model by id."""
 
-    def get_model(self, llm_model_id: str) -> JSONDict | None:
-        """Return a copy of a model entry so callers cannot mutate registry state."""
+        return self.models.get(llm_model_id)
 
-        model = self.models.get(llm_model_id)
+    def require_model(self, llm_model_id: str) -> LocalLLMModelConfig:
+        """Return a local model or raise when the id is unknown."""
+
+        model = self.get_model(llm_model_id)
         if model is None:
-            return None
-        return deepcopy(model)
+            raise ValueError(f"unknown llm_model_id: {llm_model_id}")
+        return model
 
-    def is_model_enabled(self, llm_model_id: str | None) -> bool:
-        """Return whether a model id exists and is enabled."""
+    def is_model_enabled(self, llm_model_id: str) -> bool:
+        """Return whether a registered local model is enabled."""
 
-        if not llm_model_id:
-            return False
-        model = self.models.get(llm_model_id)
-        if model is None:
-            return False
-        return bool(model.get("enabled", True))
+        return self.require_model(llm_model_id).enabled
 
-    def get_default_model_id(self, keychain_id: str | None = None) -> str | None:
-        """Resolve device default, global default, then first enabled model."""
+    def get_default_model_id(self, keychain_id: str | None = None) -> str:
+        """Resolve the configured device model or global default model."""
 
-        device_defaults = self.defaults.get("device", {})
-        if keychain_id and isinstance(device_defaults, dict):
-            candidate = device_defaults.get(keychain_id)
-            if isinstance(candidate, str) and self.is_model_enabled(candidate):
-                return candidate
-        global_default = self.defaults.get("global")
-        if isinstance(global_default, str) and self.is_model_enabled(global_default):
-            return global_default
-        for model_id, model in self.models.items():
-            if bool(model.get("enabled", True)):
-                return model_id
-        return None
+        if keychain_id and keychain_id in self.config.device_defaults:
+            model_id = self.config.device_defaults[keychain_id]
+            logger.debug(
+                "resolved device default local model: keychain_id=%s, "
+                "llm_model_id=%s",
+                keychain_id,
+                model_id,
+            )
+            return model_id
+        logger.debug(
+            "resolved global default local model: llm_model_id=%s",
+            self.config.default_model_id,
+        )
+        return self.config.default_model_id
 
     def list_visible_models(self) -> list[JSONDict]:
-        """List enabled models that can be advertised to a client."""
+        """List enabled local models that can be advertised to a client."""
 
-        items: list[JSONDict] = []
-        for model_id, info in self.models.items():
-            if not bool(info.get("enabled", True)):
-                continue
-            if not bool(info.get("visible_to_client", True)):
-                continue
-            execution_target = info.get("execution_target", "server_cloud")
-            items.append(
-                {
-                    "llm_model_id": model_id,
-                    "source": info.get("source", "cloud"),
-                    "display_name": info.get("display_name") or model_id,
-                    "execution_target": execution_target,
-                }
+        visible = [
+            model.to_public_dict()
+            for model in sorted(
+                self.models.values(),
+                key=lambda item: item.recommended_order,
             )
-        return items
-
-
-def normalize_execution_target(value: Any) -> ExecutionTarget | None:
-    """Return a supported execution target, or None for invalid input."""
-
-    if value == "server_cloud" or value == "client_local":
-        return value
-    return None
+            if model.enabled and model.visible_to_client
+        ]
+        logger.debug("visible local LLM models: %s", visible)
+        return visible

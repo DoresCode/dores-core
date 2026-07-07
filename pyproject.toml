@@ -8,7 +8,9 @@ license = { text = "MIT" }
 authors = [
   { name = "Kiwi AI" }
 ]
-dependencies = []
+dependencies = [
+  "pydantic>=2.0.0",
+]
 
 [project.optional-dependencies]
 dev = [
@@ -27,4 +29,3 @@ packages = ["src/kiwi_local_llm_bridge"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
-

@@ -1,4 +1,4 @@
-"""Open-source core for bridging cloud services to client-local LLMs."""
+"""Open-source core for bridging server applications to client-local LLMs."""
 
 from kiwi_local_llm_bridge.bridge import LocalLLMBridge
 from kiwi_local_llm_bridge.protocol import (
@@ -14,6 +14,13 @@ from kiwi_local_llm_bridge.protocol import (
     ToolResultMessage,
     parse_message,
 )
+from kiwi_local_llm_bridge.registry import (
+    LLMModelRegistry,
+    LocalLLMBridgeConfig,
+    LocalLLMModelConfig,
+    LocalLLMRequirements,
+    LocalLLMSource,
+)
 from kiwi_local_llm_bridge.routing import LLMRouteDecision, LLMRouteManager
 from kiwi_local_llm_bridge.types import BridgeTimeouts
 
@@ -25,7 +32,12 @@ __all__ = [
     "InferRequestMessage",
     "LLMRouteDecision",
     "LLMRouteManager",
+    "LLMModelRegistry",
+    "LocalLLMBridgeConfig",
     "LocalLLMBridge",
+    "LocalLLMModelConfig",
+    "LocalLLMRequirements",
+    "LocalLLMSource",
     "ModelListRequestMessage",
     "ModelListResponseMessage",
     "ModelUpdateAckMessage",

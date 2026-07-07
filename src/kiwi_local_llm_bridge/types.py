@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from typing import Any, Literal
 
-ExecutionTarget = Literal["server_cloud", "client_local"]
+ExecutionTarget = Literal["client_local"]
 JSONDict = dict[str, Any]
 
 
