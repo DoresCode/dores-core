@@ -1,7 +1,7 @@
-"""Open-source core for bridging server applications to client-local LLMs."""
+"""Dores Core connects server applications to local AI runtimes."""
 
-from kiwi_local_llm_bridge.bridge import LocalLLMBridge
-from kiwi_local_llm_bridge.protocol import (
+from .bridge import LocalLLMBridge
+from .protocol import (
     InferChunkMessage,
     InferErrorMessage,
     InferFinalMessage,
@@ -14,15 +14,15 @@ from kiwi_local_llm_bridge.protocol import (
     ToolResultMessage,
     parse_message,
 )
-from kiwi_local_llm_bridge.registry import (
+from .registry import (
     LLMModelRegistry,
     LocalLLMBridgeConfig,
     LocalLLMModelConfig,
     LocalLLMRequirements,
     LocalLLMSource,
 )
-from kiwi_local_llm_bridge.routing import LLMRouteDecision, LLMRouteManager
-from kiwi_local_llm_bridge.types import BridgeTimeouts
+from .routing import LLMRouteDecision, LLMRouteManager
+from .types import BridgeTimeouts
 
 __all__ = [
     "BridgeTimeouts",

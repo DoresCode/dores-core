@@ -5,8 +5,8 @@ import uuid
 from dataclasses import dataclass
 from typing import AsyncIterator
 
-from kiwi_local_llm_bridge.errors import LocalLLMTimeoutError
-from kiwi_local_llm_bridge.protocol import (
+from .errors import LocalLLMTimeoutError
+from .protocol import (
     InferChunkMessage,
     InferErrorMessage,
     InferFinalMessage,
@@ -15,9 +15,9 @@ from kiwi_local_llm_bridge.protocol import (
     ToolResultMessage,
     parse_message,
 )
-from kiwi_local_llm_bridge.tool_runtime import ToolRuntime, ToolResult
-from kiwi_local_llm_bridge.transports.base import BridgeTransport
-from kiwi_local_llm_bridge.types import BridgeErrorPayload, BridgeTimeouts, JSONDict
+from .tool_runtime import ToolRuntime, ToolResult
+from .transports.base import BridgeTransport
+from .types import BridgeErrorPayload, BridgeTimeouts, JSONDict
 
 
 @dataclass(frozen=True)

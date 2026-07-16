@@ -3,8 +3,8 @@
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-from kiwi_local_llm_bridge.errors import InvalidMessageError
-from kiwi_local_llm_bridge.types import BridgeErrorPayload, ExecutionTarget, JSONDict
+from .errors import InvalidMessageError
+from .types import BridgeErrorPayload, ExecutionTarget, JSONDict
 
 MessageType = Literal[
     "llm_model_update",

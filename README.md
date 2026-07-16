@@ -1,13 +1,13 @@
-# kiwi-local-llm-bridge
+# Dores Core
 
-`kiwi-local-llm-bridge` 让服务端应用把 LLM 推理请求桥接到客户端本地模型，
+`dores-core` 让服务端应用把 LLM 推理请求桥接到客户端本地模型，
 并把工具执行、审计和产品编排保留在服务端。
 
 它定义了一组轻量协议和异步优先运行时抽象，用于把 LLM 推理请求发送给客户端本地模型，
 并把本地模型返回的流式文本、工具调用和最终状态传回服务端代码。
 
 ```text
-[用户输入] --> [服务端应用] --> [kiwi-local-llm-bridge] --> [客户端本地 LLM] --> [结果返回服务端] --> [回复用户]
+[用户输入] --> [服务端应用] --> [dores-core] --> [客户端本地 LLM] --> [结果返回服务端] --> [回复用户]
                                                               |
                                                               v
                                                        [服务端工具能力]
@@ -76,8 +76,8 @@ uv run python examples/tool_call_loop.py
 ```python
 import asyncio
 
-from kiwi_local_llm_bridge.bridge import LocalLLMBridge, LocalLLMChunk, LocalLLMFinal
-from kiwi_local_llm_bridge.transports.in_memory import InMemoryBridgeTransport
+from dores_core.bridge import LocalLLMBridge, LocalLLMChunk, LocalLLMFinal
+from dores_core.transports.in_memory import InMemoryBridgeTransport
 
 
 async def run() -> None:
@@ -135,8 +135,8 @@ asyncio.run(run())
 ```python
 from dataclasses import dataclass
 
-from kiwi_local_llm_bridge.tool_runtime import ToolResult
-from kiwi_local_llm_bridge.types import JSONDict
+from dores_core.tool_runtime import ToolResult
+from dores_core.types import JSONDict
 
 
 @dataclass
@@ -196,7 +196,7 @@ provider，也不包含回退路由。配置错误应该在初始化时直接报
 缺失、默认模型不存在、重复模型 ID、未知字段都会直接报错。
 
 ```python
-from kiwi_local_llm_bridge.routing import LLMRouteManager
+from dores_core.routing import LLMRouteManager
 
 
 config = {
@@ -400,7 +400,7 @@ logging.basicConfig(level=logging.DEBUG)
     streaming_response.py
     tool_call_loop.py
     tool_call_roundtrip.py
-  src/kiwi_local_llm_bridge/
+  src/dores_core/
     bridge.py
     errors.py
     protocol.py
@@ -413,9 +413,9 @@ logging.basicConfig(level=logging.DEBUG)
       base.py
       in_memory.py
   tests/
-    test_kiwi_local_llm_bridge_bridge.py
-    test_kiwi_local_llm_bridge_protocol.py
-    test_kiwi_local_llm_bridge_routing.py
+    test_dores_core_bridge.py
+    test_dores_core_protocol.py
+    test_dores_core_routing.py
 ```
 
 ## 测试

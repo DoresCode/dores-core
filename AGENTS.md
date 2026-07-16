@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-This repository is a Python 3.12 package using a `src/` layout. Core bridge code lives in `src/kiwi_local_llm_bridge/`, with modules for protocol types, routing, registry management, tool execution, and bridge orchestration. Transport implementations are under `src/kiwi_local_llm_bridge/transports/`; mock client/server helpers are under `client/` and `server/`. Tests live in `tests/`, runnable examples in `examples/`, and protocol documentation in `docs/protocol.md`.
+This repository is a Python 3.12 package using a `src/` layout. Core bridge code lives in `src/dores_core/`, with modules for protocol types, routing, registry management, tool execution, and bridge orchestration. Transport implementations are under `src/dores_core/transports/`; mock client/server helpers are under `client/` and `server/`. Tests live in `tests/`, runnable examples in `examples/`, and protocol documentation in `docs/protocol.md`.
 
 ## Build, Test, and Development Commands
 

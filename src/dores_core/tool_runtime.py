@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from typing import Protocol
 
-from kiwi_local_llm_bridge.types import BridgeErrorPayload, JSONDict
+from .types import BridgeErrorPayload, JSONDict
 
 
 @dataclass(frozen=True)

@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from kiwi_local_llm_bridge.registry import (
+from dores_core.registry import (
     LLMModelRegistry,
     LocalLLMBridgeConfig,
 )

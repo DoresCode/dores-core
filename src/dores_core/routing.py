@@ -5,14 +5,14 @@ from dataclasses import dataclass
 
 from pydantic import ValidationError
 
-from kiwi_local_llm_bridge.errors import InvalidConfigError, RouteUpdateError
-from kiwi_local_llm_bridge.registry import (
+from .errors import InvalidConfigError, RouteUpdateError
+from .registry import (
     LLMModelRegistry,
     LocalLLMBridgeConfig,
     LocalLLMModelConfig,
 )
-from kiwi_local_llm_bridge.route_store import InMemoryRouteStore, RouteStore
-from kiwi_local_llm_bridge.types import ExecutionTarget, JSONDict
+from .route_store import InMemoryRouteStore, RouteStore
+from .types import ExecutionTarget, JSONDict
 
 logger = logging.getLogger(__name__)
 

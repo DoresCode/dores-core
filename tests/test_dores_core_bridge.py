@@ -1,11 +1,11 @@
 import asyncio
 from dataclasses import dataclass, field
 
-from kiwi_local_llm_bridge.bridge import LocalLLMBridge, LocalLLMChunk, LocalLLMFinal
-from kiwi_local_llm_bridge.errors import LocalLLMTimeoutError
-from kiwi_local_llm_bridge.tool_runtime import ToolResult
-from kiwi_local_llm_bridge.transports.in_memory import InMemoryBridgeTransport
-from kiwi_local_llm_bridge.types import BridgeErrorPayload, JSONDict
+from dores_core.bridge import LocalLLMBridge, LocalLLMChunk, LocalLLMFinal
+from dores_core.errors import LocalLLMTimeoutError
+from dores_core.tool_runtime import ToolResult
+from dores_core.transports.in_memory import InMemoryBridgeTransport
+from dores_core.types import BridgeErrorPayload, JSONDict
 
 
 @dataclass

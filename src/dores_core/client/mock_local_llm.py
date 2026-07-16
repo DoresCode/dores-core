@@ -2,8 +2,8 @@
 
 from dataclasses import dataclass, field
 
-from kiwi_local_llm_bridge.transports.in_memory import InMemoryBridgeTransport
-from kiwi_local_llm_bridge.types import JSONDict
+from ..transports.in_memory import InMemoryBridgeTransport
+from ..types import JSONDict
 
 
 @dataclass

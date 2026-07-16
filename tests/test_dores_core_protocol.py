@@ -1,5 +1,5 @@
-from kiwi_local_llm_bridge.errors import InvalidMessageError
-from kiwi_local_llm_bridge.protocol import (
+from dores_core.errors import InvalidMessageError
+from dores_core.protocol import (
     InferChunkMessage,
     InferErrorMessage,
     InferFinalMessage,
@@ -9,7 +9,7 @@ from kiwi_local_llm_bridge.protocol import (
     ToolCallMessage,
     parse_message,
 )
-from kiwi_local_llm_bridge.types import BridgeErrorPayload
+from dores_core.types import BridgeErrorPayload
 
 
 def test_parse_model_update_supports_nested_payload() -> None:

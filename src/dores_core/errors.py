@@ -1,4 +1,4 @@
-"""Typed errors used by kiwi-local-llm-bridge."""
+"""Typed errors used by Dores Core."""
 
 
 class BridgeError(Exception):

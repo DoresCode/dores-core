@@ -2,7 +2,7 @@
 
 import logging
 
-from kiwi_local_llm_bridge.routing import LLMRouteManager
+from dores_core.routing import LLMRouteManager
 
 
 def build_config() -> dict:

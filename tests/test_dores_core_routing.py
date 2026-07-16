@@ -1,7 +1,7 @@
 import pytest
 
-from kiwi_local_llm_bridge.errors import InvalidConfigError, RouteUpdateError
-from kiwi_local_llm_bridge.routing import LLMRouteManager
+from dores_core.errors import InvalidConfigError, RouteUpdateError
+from dores_core.routing import LLMRouteManager
 
 
 def _config() -> dict:

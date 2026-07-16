@@ -5,7 +5,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from kiwi_local_llm_bridge.types import JSONDict
+from .types import JSONDict
 
 logger = logging.getLogger(__name__)
 

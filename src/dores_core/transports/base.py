@@ -2,7 +2,7 @@
 
 from typing import Protocol
 
-from kiwi_local_llm_bridge.types import JSONDict
+from ..types import JSONDict
 
 
 class BridgeTransport(Protocol):

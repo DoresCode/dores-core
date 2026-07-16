@@ -1,9 +1,9 @@
 import asyncio
 
-from kiwi_local_llm_bridge.bridge import LocalLLMBridge, LocalLLMFinal
-from kiwi_local_llm_bridge.client import MockLocalLLM
-from kiwi_local_llm_bridge.server import MockToolRuntime
-from kiwi_local_llm_bridge.transports.in_memory import InMemoryBridgeTransport
+from dores_core.bridge import LocalLLMBridge, LocalLLMFinal
+from dores_core.client import MockLocalLLM
+from dores_core.server import MockToolRuntime
+from dores_core.transports.in_memory import InMemoryBridgeTransport
 
 
 def test_mock_tool_runtime_returns_get_time_result() -> None:

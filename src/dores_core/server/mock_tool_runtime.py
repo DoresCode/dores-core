@@ -2,8 +2,8 @@
 
 from dataclasses import dataclass, field
 
-from kiwi_local_llm_bridge.tool_runtime import ToolResult
-from kiwi_local_llm_bridge.types import BridgeErrorPayload, JSONDict
+from ..tool_runtime import ToolResult
+from ..types import BridgeErrorPayload, JSONDict
 
 
 @dataclass

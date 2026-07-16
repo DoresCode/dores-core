@@ -3,7 +3,7 @@
 import asyncio
 from dataclasses import dataclass, field
 
-from kiwi_local_llm_bridge.types import JSONDict
+from ..types import JSONDict
 
 
 @dataclass
